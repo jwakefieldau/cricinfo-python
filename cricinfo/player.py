@@ -1,6 +1,7 @@
+import asyncio
 from bs4 import BeautifulSoup
 
-from .cricinfo import CricinfoGeneric
+from .cricinfo import CricinfoGeneric, _bulk_coro_wrapper
 
 class Player(CricinfoGeneric):
 
@@ -47,11 +48,11 @@ class Player(CricinfoGeneric):
 		return f"{name_str}, {lifetime_str}, {country_str}"
 
 	@staticmethod
-	def player_search(search_str):
+	async def coro_player_search(search_str):
 
 		ret_players = []
 
-		search_resp_text = Player._wrap_single_req(endpoint_k='player_search',
+		search_resp_text = await Player._coro_req(endpoint_k='player_search',
 			param_d={'search': search_str, 'type': 'player'}
 		)
 
@@ -115,8 +116,16 @@ class Player(CricinfoGeneric):
 
 		return ret_players
 
-	def get_details(self):
-		player_detail_text = Player._wrap_single_req('player_detail', url_suffix=self.detail_url_path)
+	@staticmethod
+	def player_search(search_str):
+		return asyncio.run(Player.coro_player_search(search_str))
+
+	@staticmethod
+	def bulk_player_search(search_str_list):
+		return _bulk_coro_wrapper(Player.coro_player_search, search_str_list)
+
+	async def coro_get_details(self):
+		player_detail_text = await Player._coro_req('player_detail', url_suffix=self.detail_url_path)
 
 		#<div class="player-overview-details>"
 		bs = BeautifulSoup(player_detail_text, 'html.parser')
@@ -162,3 +171,4 @@ class Player(CricinfoGeneric):
 			self.teams.append(str(team_h5.string))
 
 		self.got_details = True
+

@@ -1,10 +1,14 @@
 import asyncio
 import aiohttp
 import aiodns
+import random
 
 class CricinfoGeneric(object):
 
-	rate_limit = float(1/20)	# 20 per second
+	rate_limit = {
+		'avg': float(1/10),	# 10 per second
+		'variance': float(1/5) # +/- 1/5
+	}
 
 	@classmethod
 	def _prep_endpoint(cls, endpoint_k, param_d=None, url_suffix=None):
@@ -51,14 +55,45 @@ class CricinfoGeneric(object):
 		return (url, ret_param_d,)
 
 	@classmethod
-	async def _single_req(cls, url, out_param_d=None):
+	async def _rate_limit_sleep(cls):
+		rl_d = cls.rate_limit
+		rl_min = rl_d['avg'] - (rl_d['avg'] * rl_d['variance'])
+		rl_max = rl_d['avg'] + (rl_d['avg'] * rl_d['variance'])
+		rl_sleep_interval = random.uniform(rl_min, rl_max)
+
+		await asyncio.sleep(rl_sleep_interval)
+
+	#TODO - maybe just return the response object, so we can look
+	# for redirection, so we can then use relative links on it
+	@classmethod
+	async def _coro_req(cls, endpoint_k, param_d=None, url_suffix=None):
+		(url, out_param_d,) = cls._prep_endpoint(endpoint_k, param_d, url_suffix)
 		async with aiohttp.ClientSession() as session:
+			await cls._rate_limit_sleep()
 			async with session.get(url, params=out_param_d) as http_resp:
 				http_resp.raise_for_status()
 				http_resp_text = await http_resp.text()
 				return http_resp_text
 
-	@classmethod
-	def _wrap_single_req(cls, endpoint_k, param_d=None, url_suffix=None):
-		(url, out_param_d,) = cls._prep_endpoint(endpoint_k, param_d, url_suffix)
-		return asyncio.run(cls._single_req(url, out_param_d))
+
+def _bulk_coro_wrapper(f, per_task_arg_list):
+
+	async def inner(f, per_task_arg_list):
+		try:
+			tasks = [
+				asyncio.create_task(f(arg)) for arg in per_task_arg_list
+			]
+			return await asyncio.gather(*tasks)
+		except:
+			for task in asyncio.all_tasks():
+				if task != asyncio.current_task():
+					task.cancel()
+			raise
+
+	inner_result_lists = asyncio.run(inner(f, per_task_arg_list))
+	ret_d = {}
+	for (arg, inner_result_list,) in zip(per_task_arg_list, inner_result_lists,):
+		ret_d[arg] = inner_result_list
+
+	return ret_d
+
