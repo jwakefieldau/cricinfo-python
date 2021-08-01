@@ -10,8 +10,14 @@ class CricinfoGeneric(object):
 		'variance': float(1/5) # +/- 1/5
 	}
 
+	def _set_attrs_from_kwarg_d(self, kwarg_d):
+		# set attribute values for attributes we already know about
+		for (k, v,) in kwarg_d.items():
+			if hasattr(self, k):
+				setattr(self, k, v)
+
 	@classmethod
-	def _prep_endpoint(cls, endpoint_k, param_d=None, url_suffix=None):
+	def _prep_endpoint(cls, endpoint_k, param_d=None, url_base=None, url_suffix=None):
 		endpoint = cls.endpoints.get(endpoint_k)
 
 		if not endpoint:
@@ -30,7 +36,8 @@ class CricinfoGeneric(object):
 			if endpoint_params:
 				raise ValueError(f'Endpoint {endpoint_k} has params but none supplied')
 
-		url_base = endpoint.get('url_base')
+		url_base = url_base if url_base else endpoint.get('url_base')
+		url_suffix = url_suffix if url_suffix else endpoint.get('url_suffix')
 		if url_base:
 			if url_suffix:
 				# prevent double slashes
@@ -63,17 +70,16 @@ class CricinfoGeneric(object):
 
 		await asyncio.sleep(rl_sleep_interval)
 
-	#TODO - maybe just return the response object, so we can look
-	# for redirection, so we can then use relative links on it
 	@classmethod
-	async def _coro_req(cls, endpoint_k, param_d=None, url_suffix=None):
-		(url, out_param_d,) = cls._prep_endpoint(endpoint_k, param_d, url_suffix)
+	async def _coro_req(cls, endpoint_k, param_d=None, url_base=None, url_suffix=None):
+		(url, out_param_d,) = cls._prep_endpoint(endpoint_k, param_d, url_base, url_suffix)
 		async with aiohttp.ClientSession() as session:
 			await cls._rate_limit_sleep()
 			async with session.get(url, params=out_param_d) as http_resp:
 				http_resp.raise_for_status()
+				# text must be read within session context
 				http_resp_text = await http_resp.text()
-				return http_resp_text
+				return (http_resp, http_resp_text,)
 
 
 def _bulk_coro_wrapper(f, per_task_arg_list):
@@ -96,4 +102,3 @@ def _bulk_coro_wrapper(f, per_task_arg_list):
 		ret_d[arg] = inner_result_list
 
 	return ret_d
-

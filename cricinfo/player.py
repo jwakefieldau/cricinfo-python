@@ -1,4 +1,6 @@
 import asyncio
+import re
+
 from bs4 import BeautifulSoup
 
 from .cricinfo import CricinfoGeneric, _bulk_coro_wrapper
@@ -17,26 +19,42 @@ class Player(CricinfoGeneric):
 		},
 		'player_detail': {
 			'url_base': 'https://search.espncricinfo.com/'
+		},
+		'player_matches': {
+			# class=1 - Test, class=2 - ODI, class=3 - T20I,
+			# class=11 - Test/ODI/T20I, class=20 - Youth Test, class=21 - Youth ODI, 
+			# ../player/[num].html/?class={1,2,3}&template=results&type=allround&view=match
+			'url_base': 'https://stats.espncricinfo.com/ci/engine/player/',
+			'params': [
+				'class',
+				'template',
+				'type',
+				'view'
+			]
 		}
 	}
 
-	def __init__(
-		self, country=None, name=None, birth_year=None,
-		death_year=None, detail_url_path=None
-	):
-		self.country = country
-		self.name = name
-		self.birth_year = birth_year
-		self.death_year = death_year
+	id_from_detail_url_path_re = re.compile('^.+/([0-9]+)\.html$')
+
+	def __init__(self, *args, **kwargs):
+
+		self.id = None
+		self.country = None
+		self.name = None
+		self.birth_year = None
+		self.death_year = None
 		self.got_details = False
 		self.got_stats = False
 		self.got_matches = False
-		self.detail_url_path = detail_url_path
+		self.detail_url_path = None
+		self.redir_detail_url = None # this is where we get redirected to
 		self.full_name = None
 		self.batting_style = None
 		self.bowling_style = None
 		self.born = None
 		self.teams = []
+
+		super()._set_attrs_from_kwarg_d(kwargs)
 
 	def __str__(self):
 		name_str = self.name if self.name else '[Unknown Name]'
@@ -52,7 +70,7 @@ class Player(CricinfoGeneric):
 
 		ret_players = []
 
-		search_resp_text = await Player._coro_req(endpoint_k='player_search',
+		(search_resp, search_resp_text,) = await Player._coro_req(endpoint_k='player_search',
 			param_d={'search': search_str, 'type': 'player'}
 		)
 
@@ -111,6 +129,11 @@ class Player(CricinfoGeneric):
 				player_obj.detail_url_path = str(player_detail_url_a['href'])
 				if not player_obj.detail_url_path or player_obj.detail_url_path == '':
 					raise ValueError(f"Couldn't find player detail URL path, <a>:player_detail_url_a:")
+
+				# grab the player's numerical ID from the detail URL path,
+				# to use later for match list stuff	
+				player_id_m = Player.id_from_detail_url_path_re.match(player_obj.detail_url_path)
+				player_obj.id = player_id_m.group(1)
 				
 				ret_players.append(player_obj)
 
@@ -125,7 +148,13 @@ class Player(CricinfoGeneric):
 		return _bulk_coro_wrapper(Player.coro_player_search, search_str_list)
 
 	async def coro_get_details(self):
-		player_detail_text = await Player._coro_req('player_detail', url_suffix=self.detail_url_path)
+		(player_detail_resp, player_detail_text,) = await Player._coro_req('player_detail', url_suffix=self.detail_url_path)
+
+		player_detail_resp_history = player_detail_resp.history
+		if len(player_detail_resp_history) < 1:
+			raise ValueError("Expected a redirection history after getting player details HTML")
+
+		self.redir_detail_url = player_detail_resp_history[-1]['Location']
 
 		#<div class="player-overview-details>"
 		bs = BeautifulSoup(player_detail_text, 'html.parser')
@@ -172,3 +201,8 @@ class Player(CricinfoGeneric):
 
 		self.got_details = True
 
+	def get_details(self):
+		asyncio.run(self.coro_get_details())
+
+	async def coro_get_match_summaries(self):
+		pass
