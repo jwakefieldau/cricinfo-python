@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import datetime
 from bs4 import BeautifulSoup
 
-from .cricinfo import CricinfoGeneric, _bulk_coro_wrapper
+from .cricinfo import CricinfoGeneric, _bulk_coro_wrapper, _bulk_obj_method_coro_wrapper
 from .player_career_stats import PlayerCareerStats
 from .match_list_stats import MatchListStats
 
@@ -139,6 +139,10 @@ class Player(CricinfoGeneric):
 				# grab the player's numerical ID from the detail URL path,
 				# to use later for match list stuff	
 				player_id_m = Player.id_from_detail_url_path_re.match(player_obj.detail_url_path)
+
+				if not player_id_m:
+					raise ValueError(f"Couldn't extract player ID from player detail URL path:{player_obj.detail_url_path}")
+
 				player_obj.id = player_id_m.group(1)
 				
 				ret_players.append(player_obj)
@@ -383,8 +387,12 @@ class Player(CricinfoGeneric):
 				if i == len(field_indices) - 1:
 					scorecard_a_tag = match_td.find('a')
 					match_stats_obj.scorecard_url_path = str(scorecard_a_tag['href'])
+					m = Player.id_from_detail_url_path_re.match(match_stats_obj.scorecard_url_path)
 
-					#TODO - parse match ID out of this and store it in match_stats_obj
+					if not m:
+						raise ValueError(f"Unable to extract match ID from URL path:{match_stats_obj.scorecard_url_path}")
+
+					match_stats_obj.id = m.groups(1)
 
 			else:
 				raise ValueError(f"Unknown match list column header: {field_indices[i]}")
@@ -393,3 +401,7 @@ class Player(CricinfoGeneric):
 
 	def get_match_summaries_career_stats(self, match_selector='senior-international'):
 		asyncio.run(self.coro_get_match_summaries_career_stats(match_selector))
+
+	@staticmethod
+	def bulk_get_match_summaries_career_stats(player_obj_list):
+		_bulk_obj_method_coro_wrapper(player_obj_list, 'coro_get_match_summaries_career_stats')

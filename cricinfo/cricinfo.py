@@ -96,9 +96,36 @@ def _bulk_coro_wrapper(f, per_task_arg_list):
 					task.cancel()
 			raise
 
-	inner_result_lists = asyncio.run(inner(f, per_task_arg_list))
+	inner_result_list = asyncio.run(inner(f, per_task_arg_list))
 	ret_d = {}
-	for (arg, inner_result_list,) in zip(per_task_arg_list, inner_result_lists,):
-		ret_d[arg] = inner_result_list
+	for (arg, inner_result,) in zip(per_task_arg_list, inner_result_list,):
+		ret_d[arg] = inner_result
 
 	return ret_d
+
+def _bulk_obj_method_coro_wrapper(obj_list, coro_str, per_task_kwargs_list=None):
+
+	async def inner(obj_list, coro_str, per_task_kwargs_list):
+		try:
+			tasks = []
+			for (obj, kwargs,) in zip(obj_list, per_task_kwargs_list):
+				obj_coro = getattr(obj, coro_str)
+				tasks.append(
+					asyncio.create_task(obj_coro(**kwargs))
+				)
+			return await asyncio.gather(*tasks)
+		except:
+			for task in asyncio.all_tasks():
+				if task != asyncio.current_task():
+					task.cancel()
+			raise
+
+	inner_kwargs_list = per_task_kwargs_list if per_task_kwargs_list else [{} for _ in obj_list]		
+	inner_ret_list = asyncio.run(inner(obj_list, coro_str, inner_kwargs_list))
+	ret_d = {}
+	for (inner_ret, obj,) in zip(inner_ret_list, obj_list):
+		k = str(id(obj))
+		ret_d[k] = inner_ret
+
+	return ret_d
+
