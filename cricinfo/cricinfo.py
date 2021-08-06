@@ -120,9 +120,14 @@ def _bulk_obj_method_coro_wrapper(obj_list, coro_str, per_task_kwargs_list=None)
 					task.cancel()
 			raise
 
+	# if no kwargs dict list is supplied, make a list with an empty dict per object
 	inner_kwargs_list = per_task_kwargs_list if per_task_kwargs_list else [{} for _ in obj_list]		
+
 	inner_ret_list = asyncio.run(inner(obj_list, coro_str, inner_kwargs_list))
 	ret_d = {}
+
+	# match return val to object ID since we don't have a conveniently hashable
+	# arg 
 	for (inner_ret, obj,) in zip(inner_ret_list, obj_list):
 		k = str(id(obj))
 		ret_d[k] = inner_ret
