@@ -8,6 +8,7 @@ class PlayerCareerStats(CricinfoGeneric):
 		self.matches = None
 		self.runs = None
 		self.highest_score = None
+		self.highest_score_not_out = None
 		self.batting_average = None
 		self.hundreds = None
 		self.wickets = None

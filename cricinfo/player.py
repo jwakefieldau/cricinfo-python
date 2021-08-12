@@ -72,6 +72,20 @@ class Player(CricinfoGeneric):
 		return f"{name_str}, {lifetime_str}, {country_str}"
 
 	@staticmethod
+	def parse_score(score_str):
+		if score_str in ['DNB', '-']:
+			num_score = None
+			not_out = None
+		elif score_str.endswith('*'):
+			not_out = True
+			num_score = int(score_str[:-1])
+		else:
+			not_out = False
+			num_score = int(score_str)
+
+		return (num_score, not_out,)
+
+	@staticmethod
 	async def coro_player_search(search_str):
 
 		ret_players = []
@@ -244,9 +258,12 @@ class Player(CricinfoGeneric):
 
 		# <caption>Career averages</caption>
 		# the <table> that is the parent of this is what we want
+		# if there aren't 2 <caption> tags, this player has no
+		# match list summary stats
 		captions = bs.find_all('caption')
 		if not captions or len(captions) < 2:
-			raise ValueError(f"Missing <caption> tags")
+			#raise ValueError(f"Missing <caption> tags")
+			return
 
 		if captions[0].string == 'Career averages':
 			averages_table = captions[0].parent
@@ -277,6 +294,10 @@ class Player(CricinfoGeneric):
 			if not field_indices[i]:
 				continue
 
+			# if we get a '-', leave the field None
+			if cur_val == '-':
+				continue
+
 			elif field_indices[i] == 'Span':
 				stats_obj.career_year_span = cur_val
 
@@ -287,7 +308,9 @@ class Player(CricinfoGeneric):
 				stats_obj.runs = int(cur_val)
 
 			elif field_indices[i] == 'HS':
-				stats_obj.highest_score = int(cur_val)
+				(num_score, not_out,) = Player.parse_score(cur_val)
+				stats_obj.highest_score = num_score
+				stats_obj.highest_score_not_out = not_out
 
 			elif field_indices[i] == 'Bat Av':
 				stats_obj.batting_average = float(cur_val)	
@@ -321,6 +344,7 @@ class Player(CricinfoGeneric):
 				raise ValueError(f"Unknown field name {field_indices[i]}")
 
 			self.career_stats_dict[match_selector] = stats_obj
+			self.got_stats = True
 
 		# <caption>Match by match list</caption>
 		# similar to above but create MatchListStats instances in list at
@@ -345,13 +369,17 @@ class Player(CricinfoGeneric):
 
 			cur_val = str(match_td.string)
 
+			# again, if we get a '-', leave the field None
+			if cur_val == '-':
+				continue
+
 			if field_indices[i] == 'Bat1':
-				(num_score, not_out,) = MatchListStats.parse_score(cur_val)
+				(num_score, not_out,) = Player.parse_score(cur_val)
 				match_stats_obj.first_innings_score = num_score
 				match_stats_obj.first_innings_not_out = not_out
 
 			elif field_indices[i] == 'Bat2':
-				(num_score, not_out,) = MatchListStats.parse_score(cur_val)
+				(num_score, not_out,) = Player.parse_score(cur_val)
 				match_stats_obj.second_innings_score = num_score
 				match_stats_obj.second_innings_not_out = not_out
 
@@ -360,10 +388,12 @@ class Player(CricinfoGeneric):
 				continue
 
 			elif field_indices[i] == 'Wkts':
-				match_stats_obj.total_wickets = int(cur_val)
+				if cur_val != '-':
+					match_stats_obj.total_wickets = int(cur_val)
 
 			elif field_indices[i] == 'Conc':
-				match_stats_obj.runs_conceded = int(cur_val)
+				if cur_val != '-':
+					match_stats_obj.runs_conceded = int(cur_val)
 
 			elif field_indices[i] == 'Ct':
 				match_stats_obj.catches = int(cur_val)
@@ -392,16 +422,35 @@ class Player(CricinfoGeneric):
 					if not m:
 						raise ValueError(f"Unable to extract match ID from URL path:{match_stats_obj.scorecard_url_path}")
 
-					match_stats_obj.id = m.groups(1)
+					match_stats_obj.id = m.group(1)
 
 			else:
 				raise ValueError(f"Unknown match list column header: {field_indices[i]}")
 
-		self.match_list_stats_dict[match_selector].append(match_stats_obj) 
+			self.match_list_stats_dict[match_selector].append(match_stats_obj) 
+			match_stats_obj = MatchListStats()
 
-	def get_match_summaries_career_stats(self, match_selector='senior-international'):
+		self.got_matches = True
+
+
+
+	def get_match_summaries_career_stats(self, match_selector=None):
 		asyncio.run(self.coro_get_match_summaries_career_stats(match_selector))
 
+	# caller can either specify a list of specific match selectors per player
+	# or one selector to apply to all
 	@staticmethod
-	def bulk_get_match_summaries_career_stats(player_obj_list):
-		_bulk_obj_method_coro_wrapper(player_obj_list, 'coro_get_match_summaries_career_stats')
+	def bulk_get_match_summaries_career_stats(player_obj_list, match_selector=None, match_selector_list=None):
+
+		wrapper_kwargs = {}
+		if match_selector and not match_selector_list:
+			wrapper_kwargs['all_tasks_kwargs'] = {'match_selector': match_selector}
+
+		elif match_selector_list:
+			wrapper_kwargs['per_task_kwargs_list'] = match_selector_list
+
+		_bulk_obj_method_coro_wrapper(
+			player_obj_list,
+			'coro_get_match_summaries_career_stats',
+			**wrapper_kwargs
+		)

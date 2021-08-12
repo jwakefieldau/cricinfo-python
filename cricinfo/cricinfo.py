@@ -103,12 +103,12 @@ def _bulk_coro_wrapper(f, per_task_arg_list):
 
 	return ret_d
 
-def _bulk_obj_method_coro_wrapper(obj_list, coro_str, per_task_kwargs_list=None):
+def _bulk_obj_method_coro_wrapper(obj_list, coro_str, all_tasks_kwargs=None, per_task_kwargs_list=None):
 
-	async def inner(obj_list, coro_str, per_task_kwargs_list):
+	async def inner(obj_list, coro_str, tasks_kwargs_list):
 		try:
 			tasks = []
-			for (obj, kwargs,) in zip(obj_list, per_task_kwargs_list):
+			for (obj, kwargs,) in zip(obj_list, tasks_kwargs_list):
 				obj_coro = getattr(obj, coro_str)
 				tasks.append(
 					asyncio.create_task(obj_coro(**kwargs))
@@ -120,8 +120,20 @@ def _bulk_obj_method_coro_wrapper(obj_list, coro_str, per_task_kwargs_list=None)
 					task.cancel()
 			raise
 
-	# if no kwargs dict list is supplied, make a list with an empty dict per object
-	inner_kwargs_list = per_task_kwargs_list if per_task_kwargs_list else [{} for _ in obj_list]		
+	# we can either have a list of kwargs dicts to apply to tasks one by one,
+	# or a single kwargs dict to apply to all tasks,
+	# or neither, in which case we use blank kwargs
+	if per_task_kwargs_list and all_tasks_kwargs:
+		raise ValueError("Can't use both per_task_kwargs_list and all_tasks_kwargs")
+
+	if per_task_kwargs_list:
+		inner_kwargs_list = per_task_kwargs_list
+
+	elif all_tasks_kwargs:
+		inner_kwargs_list = [all_tasks_kwargs for _ in obj_list]
+
+	else:
+		inner_kwargs_list = [{} for _ in obj_list]
 
 	inner_ret_list = asyncio.run(inner(obj_list, coro_str, inner_kwargs_list))
 	ret_d = {}
