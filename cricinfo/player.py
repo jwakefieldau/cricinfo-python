@@ -287,7 +287,7 @@ class Player(CricinfoGeneric):
 
 		stats_obj = PlayerCareerStats()
 		for (i, averages_td,) in enumerate(averages_tbody_tr.find_all('td')):
-			
+
 			cur_val = str(averages_td.string)
 
 			# if this belongs to a blank header, skip it
@@ -357,75 +357,100 @@ class Player(CricinfoGeneric):
 
 		field_indices = []
 		for match_list_th in match_list_thead_tr.find_all('th'):
-			# otherwise we get 'None' instead of None and that's annoying
-			field_name = str(match_list_th.string) if match_list_th.string else None
-			field_indices.append(field_name)
 
-		match_list_tbody = match_list_table.find('tbody')
-		match_list_tbody_tr = match_list_tbody.find('tr')
+			# if the <th> has an <a>, use the string from that
+			# if that <a> has a <img>, use the string adjacent to the <img>
+			th_a = match_list_th.find('a')
+			if th_a:
+				th_a_img = th_a.find('img')
+				if th_a_img:
+					field_name = str(th_a_img.previous_element)
+				else:
+					field_name = str(th_a.string)
 
-		match_stats_obj = MatchListStats()
-		for (i, match_td,) in enumerate(match_list_tbody_tr.find_all('td')):
-
-			cur_val = str(match_td.string)
-
-			# again, if we get a '-', leave the field None
-			if cur_val == '-':
-				continue
-
-			if field_indices[i] == 'Bat1':
-				(num_score, not_out,) = Player.parse_score(cur_val)
-				match_stats_obj.first_innings_score = num_score
-				match_stats_obj.first_innings_not_out = not_out
-
-			elif field_indices[i] == 'Bat2':
-				(num_score, not_out,) = Player.parse_score(cur_val)
-				match_stats_obj.second_innings_score = num_score
-				match_stats_obj.second_innings_not_out = not_out
-
-			# ignore total runs as it's trivial
-			elif field_indices[i] == 'Runs':
-				continue
-
-			elif field_indices[i] == 'Wkts':
-				if cur_val != '-':
-					match_stats_obj.total_wickets = int(cur_val)
-
-			elif field_indices[i] == 'Conc':
-				if cur_val != '-':
-					match_stats_obj.runs_conceded = int(cur_val)
-
-			elif field_indices[i] == 'Ct':
-				match_stats_obj.catches = int(cur_val)
-
-			elif field_indices[i] == 'St':
-				match_stats_obj.stumpings = int(cur_val)
-
-			elif field_indices[i] == 'Opposition':
-				match_stats_obj.opposition = cur_val
-
-			elif field_indices[i] == 'Ground':
-				match_stats_obj.ground = cur_val
-
-			elif field_indices[i] == 'Start Date':
-				# '2 Dec 1999'
-				match_stats_obj.start_dt = datetime.strptime(cur_val, "%d %b %Y")
-
-			# blank header, specifically at the end, is where the link to the scorecard is
-			# there are a couple of others, ignore them
-			elif not field_indices[i]:
-				if i == len(field_indices) - 1:
-					scorecard_a_tag = match_td.find('a')
-					match_stats_obj.scorecard_url_path = str(scorecard_a_tag['href'])
-					m = Player.id_from_detail_url_path_re.match(match_stats_obj.scorecard_url_path)
-
-					if not m:
-						raise ValueError(f"Unable to extract match ID from URL path:{match_stats_obj.scorecard_url_path}")
-
-					match_stats_obj.id = m.group(1)
+				#DEBUG
+				print(f"got field name {field_name} from a tag {th_a}")
 
 			else:
-				raise ValueError(f"Unknown match list column header: {field_indices[i]}")
+				# otherwise we get 'None' instead of None and that's annoying
+				field_name = str(match_list_th.string) if match_list_th.string else None
+				
+				#DEBUG
+				print(f"got field name {field_name} from a tag {match_list_th}")
+
+			field_indices.append(field_name)
+
+		#DEBUG
+		print(f"got field indices: {field_indices}")
+
+		match_list_tbody = match_list_table.find('tbody')
+		for match_list_tbody_tr in match_list_tbody.find_all('tr'):
+
+			match_stats_obj = MatchListStats()
+			for (i, match_td,) in enumerate(match_list_tbody_tr.find_all('td')):
+
+				cur_val = str(match_td.string)
+
+				#DEBUG
+				print(f"i:{i},cur_val:{cur_val}")
+
+				# again, if we get a '-', leave the field None
+				if cur_val == '-':
+					continue
+
+				if field_indices[i] == 'Bat1':
+					(num_score, not_out,) = Player.parse_score(cur_val)
+					match_stats_obj.first_innings_score = num_score
+					match_stats_obj.first_innings_not_out = not_out
+
+				elif field_indices[i] == 'Bat2':
+					(num_score, not_out,) = Player.parse_score(cur_val)
+					match_stats_obj.second_innings_score = num_score
+					match_stats_obj.second_innings_not_out = not_out
+
+				# ignore total runs as it's trivial
+				elif field_indices[i] == 'Runs':
+					continue
+
+				elif field_indices[i] == 'Wkts':
+					if cur_val != '-':
+						match_stats_obj.total_wickets = int(cur_val)
+
+				elif field_indices[i] == 'Conc':
+					if cur_val != '-':
+						match_stats_obj.runs_conceded = int(cur_val)
+
+				elif field_indices[i] == 'Ct':
+					match_stats_obj.catches = int(cur_val)
+
+				elif field_indices[i] == 'St':
+					match_stats_obj.stumpings = int(cur_val)
+
+				elif field_indices[i] == 'Opposition':
+					match_stats_obj.opposition = cur_val
+
+				elif field_indices[i] == 'Ground':
+					match_stats_obj.ground = cur_val
+
+				elif field_indices[i] == 'Start Date':
+					# '2 Dec 1999'
+					match_stats_obj.start_dt = datetime.strptime(cur_val, "%d %b %Y")
+
+				# blank header, specifically at the end, is where the link to the scorecard is
+				# there are a couple of others, ignore them
+				elif not field_indices[i]:
+					if i == len(field_indices) - 1:
+						scorecard_a_tag = match_td.find('a')
+						match_stats_obj.scorecard_url_path = str(scorecard_a_tag['href'])
+						m = Player.id_from_detail_url_path_re.match(match_stats_obj.scorecard_url_path)
+
+						if not m:
+							raise ValueError(f"Unable to extract match ID from URL path:{match_stats_obj.scorecard_url_path}")
+
+						match_stats_obj.id = m.group(1)
+
+				else:
+					raise ValueError(f"Unknown match list column header: {field_indices[i]}")
 
 			self.match_list_stats_dict[match_selector].append(match_stats_obj) 
 			match_stats_obj = MatchListStats()
