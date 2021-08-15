@@ -19,16 +19,3 @@ class MatchListStats(CricinfoGeneric):
 
 		super()._set_attrs_from_kwarg_d(kwargs)
 
-	@staticmethod
-	def parse_score(score_str):
-		if score_str in ['DNB', '-']:
-			num_score = None
-			not_out = None
-		elif score_str.endswith('*'):
-			not_out = True
-			num_score = int(score_str[:-1])
-		else:
-			not_out = False
-			num_score = int(score_str)
-
-		return (num_score, not_out,)
