@@ -3,7 +3,11 @@ import re
 
 from collections import defaultdict
 from datetime import datetime
+from collections.abc import Sequence
+
 from bs4 import BeautifulSoup
+
+from aiohttp import ClientResponse
 
 from .cricinfo import CricinfoGeneric, _bulk_coro_wrapper, _bulk_obj_method_coro_wrapper
 from .player_career_stats import PlayerCareerStats
@@ -73,7 +77,8 @@ class Player(CricinfoGeneric):
 
 	@staticmethod
 	def parse_score(score_str):
-		if score_str in ['DNB', '-']:
+		# TDNB is "Team Did Not Bat" apparently
+		if score_str in ['TDNB', 'DNB', 'absent', 'sub', '-']:
 			num_score = None
 			not_out = None
 		elif score_str.endswith('*'):
@@ -97,6 +102,10 @@ class Player(CricinfoGeneric):
 		# <ul class="player-list three-item-stack">
 		bs = BeautifulSoup(search_resp_text, 'html.parser')
 		results_ul = bs.find('ul', attrs={'class': 'player-list three-item-stack'})	
+
+		# if there's no <ul>, there's no results
+		if not results_ul:
+			return None
 
 		cur_country = None
 		for player_li in results_ul.find_all('li'):
@@ -175,10 +184,19 @@ class Player(CricinfoGeneric):
 		(player_detail_resp, player_detail_text,) = await Player._coro_req('player_detail', url_suffix=self.detail_url_path)
 
 		player_detail_resp_history = player_detail_resp.history
-		if len(player_detail_resp_history) < 1:
-			raise ValueError("Expected a redirection history after getting player details HTML")
 
-		self.redir_detail_url = player_detail_resp_history[-1]['Location']
+		if isinstance(player_detail_resp_history, Sequence):
+			if len(player_detail_resp_history) < 1:
+				raise ValueError("Expected a redirection history after getting player details HTML")
+			self.redir_detail_url = player_detail_resp_history[-1].headers['Location']
+
+		elif isinstance(player_detail_resp_history, ClientResponse):
+			self.redir_detail_url = player_detail_resp_history.headers['Location']
+
+		else:
+				raise ValueError(f"Expected a redirection history after getting player details HTML, but history is a {type(player_detail_resp_history)} instance")
+
+
 
 		#<div class="player-overview-details>"
 		bs = BeautifulSoup(player_detail_text, 'html.parser')
@@ -368,20 +386,11 @@ class Player(CricinfoGeneric):
 				else:
 					field_name = str(th_a.string)
 
-				#DEBUG
-				print(f"got field name {field_name} from a tag {th_a}")
-
 			else:
 				# otherwise we get 'None' instead of None and that's annoying
 				field_name = str(match_list_th.string) if match_list_th.string else None
 				
-				#DEBUG
-				print(f"got field name {field_name} from a tag {match_list_th}")
-
 			field_indices.append(field_name)
-
-		#DEBUG
-		print(f"got field indices: {field_indices}")
 
 		match_list_tbody = match_list_table.find('tbody')
 		for match_list_tbody_tr in match_list_tbody.find_all('tr'):
@@ -389,10 +398,13 @@ class Player(CricinfoGeneric):
 			match_stats_obj = MatchListStats()
 			for (i, match_td,) in enumerate(match_list_tbody_tr.find_all('td')):
 
-				cur_val = str(match_td.string)
-
-				#DEBUG
-				print(f"i:{i},cur_val:{cur_val}")
+				# fields like the ground and opposition have the data in the 
+				# link's string
+				match_td_a = match_td.find('a')
+				if match_td_a:
+					cur_val = str(match_td_a.string)
+				else:		
+					cur_val = str(match_td.string)
 
 				# again, if we get a '-', leave the field None
 				if cur_val == '-':

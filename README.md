@@ -18,5 +18,5 @@ datetime.datetime(2021, 7, 31, 21, 34, 52, 682726)
 TODO:
 * expand on description
 * provide more examples
-* get player stats - Player has a PlayerStats instance?
-* get player matches - Matches staticmethod returns a dict of Matches, Player gets a list of Match keys/IDs set
+* implement full match scorecards retrieval
+* implement search/enumeration of teams, series
