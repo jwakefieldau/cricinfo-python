@@ -1,4 +1,4 @@
-from cricinfo import CricinfoGeneric
+from .cricinfo import CricinfoGeneric
 
 class MatchListStats(CricinfoGeneric):
 

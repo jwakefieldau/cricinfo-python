@@ -19,9 +19,13 @@ class Match(CricinfoGeneric):
 
 	#TODO - coro for grabbing single match scorecard
 	# either from a URL suffix from a match list summary or
-	# a full URL
+	# a full URL 
+	#NOTE - why do we want to support full URL?
+	@staticmethod
 	async def get_match_from_url(player_match_url_suffix=None, url=None):
 		pass
 
-	#TODO - coro for grabbing player's scorecards in bulk
+	#TODO - method for grabbing single match scorecard using coro
+
+	#TODO - method for grabbing player's scorecards in bulk
 	# using bulk coro wrapper
