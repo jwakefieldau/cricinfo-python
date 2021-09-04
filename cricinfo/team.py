@@ -1,9 +1,10 @@
 from .cricinfo import CricinfoGeneric
 
-class MatchBowlerInnings(CricinfoGeneric):
+class Team(CricinfoGeneric):
 
 	def __init__(self, *args, **kwargs):
 
-		# TODO attributes
+		self.id = None
+		self.name = None
 
 		super()._set_attrs_from_kwarg_d(kwargs)

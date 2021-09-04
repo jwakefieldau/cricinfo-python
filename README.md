@@ -20,3 +20,5 @@ TODO:
 * provide more examples
 * implement full match scorecards retrieval
 * implement search/enumeration of teams, series
+* cache, so that we can follow relationships to objects we already retrieved
+* storage

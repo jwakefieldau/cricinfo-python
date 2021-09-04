@@ -4,8 +4,7 @@ class MatchBatterInnings(CricinfoGeneric):
 
 	def __init__(self, *args, **kwargs):
 
-		self.batter_id = None
-		self.batter_name = None
+		self.batter = None # Player
 		self.captain = False
 		self.wicket_keeper = False
 		self.not_out = None
